@@ -2,13 +2,14 @@ import serial
 import numpy as np
 import joblib
 import time
+import csv
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
-PORT = "COM5"   # change to your port
-BAUD = 9600
+PORT = "COM3"   # change this
+BAUD = 115200
 
 WINDOW = 10
 RECORD_SECONDS = 5
@@ -38,7 +39,29 @@ time.sleep(2)
 X = []
 y = []
 
-print("=== ADAPTIVE LIVE TRAINING ===")
+raw_filename = "raw_emg_data.csv"
+feature_filename = "feature_emg_data.csv"
+
+# Create CSV headers
+with open(raw_filename, "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["Gesture", "Sensor1", "Sensor2", "Sensor3", "Sensor4"])
+
+with open(feature_filename, "w", newline="") as f:
+    writer = csv.writer(f)
+    header = ["Gesture"]
+    for ch in range(1, 5):
+        header.extend([
+            f"Mean_{ch}",
+            f"Std_{ch}",
+            f"RMS_{ch}",
+            f"MAV_{ch}",
+            f"WL_{ch}",
+            f"ZC_{ch}"
+        ])
+    writer.writerow(header)
+
+print("=== ADAPTIVE LIVE TRAINING WITH CSV LOGGING ===")
 
 while True:
 
@@ -64,6 +87,11 @@ while True:
 
                 raw_buffer.append([s1, s2, s3, s4])
 
+                # Save raw sample
+                with open(raw_filename, "a", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow([gesture, s1, s2, s3, s4])
+
             except:
                 continue
 
@@ -75,6 +103,11 @@ while True:
 
             X.append(features)
             y.append(gesture)
+
+            # Save feature row
+            with open(feature_filename, "a", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow([gesture] + features)
 
         print(f"{gesture} data added.")
 
@@ -106,15 +139,15 @@ while True:
     y_pred = model.predict(X_test)
     acc = accuracy_score(y_test, y_pred)
 
-    print(f"\nTest Accuracy: {acc:.3f}")
+    print(f"Test Accuracy: {acc:.3f}")
 
     if acc >= TARGET_ACCURACY:
         print("Target accuracy reached.")
         break
     else:
-        print("Accuracy below target. Collect more data and retrain.")
+        print("Accuracy below target. Collect more data.")
 
-# Save final model
+# Save model
 joblib.dump(model, "subject_model.pkl")
 joblib.dump(scaler, "subject_scaler.pkl")
 joblib.dump(label_encoder, "subject_label_encoder.pkl")
