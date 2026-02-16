@@ -3,6 +3,7 @@ import numpy as np
 import joblib
 import time
 import csv
+import os
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
@@ -14,6 +15,11 @@ BAUD = 115200
 WINDOW = 25
 RECORD_SECONDS = 8
 GESTURES = ["Open", "Close"]
+
+# Save files in same folder as script
+BASE_DIR = os.path.dirname(__file__)
+RAW_FILE = os.path.join(BASE_DIR, "raw_emg_data.csv")
+FEATURE_FILE = os.path.join(BASE_DIR, "feature_data.csv")
 
 def extract_features(window):
 
@@ -43,8 +49,10 @@ time.sleep(2)
 
 X = []
 y = []
+raw_rows = []
+feature_rows = []
 
-print("=== BINARY TRAINING (Open vs Close) ===")
+print("=== TRAINING WITH CSV LOGGING ===")
 
 for gesture in GESTURES:
 
@@ -62,21 +70,50 @@ for gesture in GESTURES:
 
             s1, s2, s3, s4 = map(int, parts[:4])
             buffer.append([s1, s2, s3, s4])
+            raw_rows.append([gesture, s1, s2, s3, s4])
+
         except:
             continue
 
     buffer = np.array(buffer)
 
-    # Sliding windows
     for i in range(0, len(buffer) - WINDOW):
         window = buffer[i:i+WINDOW]
         features = extract_features(window)
 
         X.append(features)
         y.append(gesture)
+        feature_rows.append([gesture] + features)
 
-    print(f"{gesture} added.")
+    print(f"{gesture} collected.")
 
+# ===== SAVE RAW CSV =====
+with open(RAW_FILE, "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["Gesture", "S1", "S2", "S3", "S4"])
+    writer.writerows(raw_rows)
+
+# ===== SAVE FEATURE CSV =====
+header = ["Gesture"]
+for ch in range(1, 5):
+    header += [
+        f"Mean_{ch}",
+        f"Std_{ch}",
+        f"RMS_{ch}",
+        f"MAV_{ch}",
+        f"WL_{ch}",
+        f"ZC_{ch}"
+    ]
+header += ["Ratio_1", "Ratio_2", "Ratio_3", "Ratio_4"]
+
+with open(FEATURE_FILE, "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(header)
+    writer.writerows(feature_rows)
+
+print("CSV files saved.")
+
+# ===== TRAIN MODEL =====
 X = np.array(X)
 y = np.array(y)
 
@@ -87,7 +124,8 @@ encoder = LabelEncoder()
 y_encoded = encoder.fit_transform(y)
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X_scaled, y_encoded,
+    X_scaled,
+    y_encoded,
     test_size=0.3,
     stratify=y_encoded,
     random_state=42
@@ -103,10 +141,10 @@ model = RandomForestClassifier(
 model.fit(X_train, y_train)
 
 acc = accuracy_score(y_test, model.predict(X_test))
-print(f"\nValidation Accuracy: {acc:.3f}")
+print(f"Validation Accuracy: {acc:.3f}")
 
-joblib.dump(model, "subject_model.pkl")
-joblib.dump(scaler, "subject_scaler.pkl")
-joblib.dump(encoder, "subject_encoder.pkl")
+joblib.dump(model, os.path.join(BASE_DIR, "subject_model.pkl"))
+joblib.dump(scaler, os.path.join(BASE_DIR, "subject_scaler.pkl"))
+joblib.dump(encoder, os.path.join(BASE_DIR, "subject_encoder.pkl"))
 
 print("Model saved.")
