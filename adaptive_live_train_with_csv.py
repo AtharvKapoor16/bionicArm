@@ -8,17 +8,18 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
-PORT = "COM3"   # change this
+PORT = "COM5"
 BAUD = 115200
 
-WINDOW = 10
-RECORD_SECONDS = 5
-TARGET_ACCURACY = 0.90
-
+WINDOW = 25
+RECORD_SECONDS = 8
 GESTURES = ["Open", "Close"]
 
 def extract_features(window):
+
+    window = window - np.mean(window, axis=0)
     features = []
+
     for ch in range(window.shape[1]):
         signal = window[:, ch]
 
@@ -31,6 +32,10 @@ def extract_features(window):
 
         features.extend([mean, std, rms, mav, wl, zc])
 
+    energy = np.mean(np.abs(window), axis=0)
+    ratio = energy / (np.sum(energy) + 1e-8)
+    features.extend(ratio)
+
     return features
 
 ser = serial.Serial(PORT, BAUD)
@@ -39,117 +44,69 @@ time.sleep(2)
 X = []
 y = []
 
-raw_filename = "raw_emg_data.csv"
-feature_filename = "feature_emg_data.csv"
+print("=== BINARY TRAINING (Open vs Close) ===")
 
-# Create CSV headers
-with open(raw_filename, "w", newline="") as f:
-    writer = csv.writer(f)
-    writer.writerow(["Gesture", "Sensor1", "Sensor2", "Sensor3", "Sensor4"])
+for gesture in GESTURES:
 
-with open(feature_filename, "w", newline="") as f:
-    writer = csv.writer(f)
-    header = ["Gesture"]
-    for ch in range(1, 5):
-        header.extend([
-            f"Mean_{ch}",
-            f"Std_{ch}",
-            f"RMS_{ch}",
-            f"MAV_{ch}",
-            f"WL_{ch}",
-            f"ZC_{ch}"
-        ])
-    writer.writerow(header)
+    input(f"\nPerform {gesture}. Press Enter...")
+    start = time.time()
+    buffer = []
 
-print("=== ADAPTIVE LIVE TRAINING WITH CSV LOGGING ===")
+    while time.time() - start < RECORD_SECONDS:
+        try:
+            line = ser.readline().decode().strip()
+            parts = line.split(",")
 
-while True:
-
-    for gesture in GESTURES:
-        input(f"\nPerform {gesture}. Press Enter to record...")
-        print(f"Recording {gesture} for {RECORD_SECONDS} seconds...")
-
-        start_time = time.time()
-        raw_buffer = []
-
-        while time.time() - start_time < RECORD_SECONDS:
-            try:
-                line = ser.readline().decode().strip()
-                parts = line.split(",")
-
-                if len(parts) < 4:
-                    continue
-
-                s1, s2, s3, s4 = map(int, parts[:4])
-
-                if 0 in [s1, s2, s3, s4]:
-                    continue
-
-                raw_buffer.append([s1, s2, s3, s4])
-
-                # Save raw sample
-                with open(raw_filename, "a", newline="") as f:
-                    writer = csv.writer(f)
-                    writer.writerow([gesture, s1, s2, s3, s4])
-
-            except:
+            if len(parts) < 4:
                 continue
 
-        raw_buffer = np.array(raw_buffer)
+            s1, s2, s3, s4 = map(int, parts[:4])
+            buffer.append([s1, s2, s3, s4])
+        except:
+            continue
 
-        for i in range(0, len(raw_buffer) - WINDOW, WINDOW):
-            window = raw_buffer[i:i+WINDOW]
-            features = extract_features(window)
+    buffer = np.array(buffer)
 
-            X.append(features)
-            y.append(gesture)
+    # Sliding windows
+    for i in range(0, len(buffer) - WINDOW):
+        window = buffer[i:i+WINDOW]
+        features = extract_features(window)
 
-            # Save feature row
-            with open(feature_filename, "a", newline="") as f:
-                writer = csv.writer(f)
-                writer.writerow([gesture] + features)
+        X.append(features)
+        y.append(gesture)
 
-        print(f"{gesture} data added.")
+    print(f"{gesture} added.")
 
-    print("\nTraining model...")
+X = np.array(X)
+y = np.array(y)
 
-    scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
 
-    label_encoder = LabelEncoder()
-    y_encoded = label_encoder.fit_transform(y)
+encoder = LabelEncoder()
+y_encoded = encoder.fit_transform(y)
 
-    X_train, X_test, y_train, y_test = train_test_split(
-        X_scaled,
-        y_encoded,
-        test_size=0.3,
-        stratify=y_encoded,
-        random_state=42
-    )
+X_train, X_test, y_train, y_test = train_test_split(
+    X_scaled, y_encoded,
+    test_size=0.3,
+    stratify=y_encoded,
+    random_state=42
+)
 
-    model = RandomForestClassifier(
-        n_estimators=600,
-        max_depth=20,
-        class_weight='balanced',
-        random_state=42
-    )
+model = RandomForestClassifier(
+    n_estimators=800,
+    max_depth=30,
+    class_weight='balanced',
+    random_state=42
+)
 
-    model.fit(X_train, y_train)
+model.fit(X_train, y_train)
 
-    y_pred = model.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
+acc = accuracy_score(y_test, model.predict(X_test))
+print(f"\nValidation Accuracy: {acc:.3f}")
 
-    print(f"Test Accuracy: {acc:.3f}")
-
-    if acc >= TARGET_ACCURACY:
-        print("Target accuracy reached.")
-        break
-    else:
-        print("Accuracy below target. Collect more data.")
-
-# Save model
 joblib.dump(model, "subject_model.pkl")
 joblib.dump(scaler, "subject_scaler.pkl")
-joblib.dump(label_encoder, "subject_label_encoder.pkl")
+joblib.dump(encoder, "subject_encoder.pkl")
 
 print("Model saved.")
