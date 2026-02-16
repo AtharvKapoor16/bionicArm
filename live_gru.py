@@ -31,17 +31,22 @@ class GRUModel(nn.Module):
         out = self.fc2(out)
         return out
 
+# Load model
 model = GRUModel()
 model.load_state_dict(torch.load("gru_model.pt"))
 model.eval()
 
 ser = serial.Serial(PORT, BAUD)
+
+print("Starting live prediction...")
+
 buffer = deque(maxlen=WINDOW)
 
 while True:
     try:
         line = ser.readline().decode().strip()
         s = np.array(list(map(int, line.split(","))))
+
         if len(s) < 4:
             continue
 
@@ -59,7 +64,7 @@ while True:
 
             if conf.item() > THRESHOLD:
                 gesture = encoder.inverse_transform([idx.item()])[0]
-                print(f"{gesture} ({conf.item():.2f})")
+                print(f"Prediction: {gesture} | Confidence: {conf.item():.2f}")
 
     except:
         continue
