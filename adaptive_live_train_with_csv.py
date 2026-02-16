@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
-PORT = "COM5"
+PORT = "COM3"
 BAUD = 115200
 
 WINDOW = 25
