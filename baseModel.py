@@ -2,9 +2,11 @@ import pandas as pd
 import numpy as np
 import os
 import joblib
+import matplotlib.pyplot as plt
+
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, ConfusionMatrixDisplay
 from sklearn.preprocessing import StandardScaler
 
 WINDOW = 10
@@ -81,7 +83,22 @@ y_pred = model.predict(X_test)
 print("\nTraining Accuracy:", accuracy_score(y_test, y_pred))
 print(classification_report(y_test, y_pred))
 
-joblib.dump(model, os.path.join(script_dir, "emg_model.pkl"))
-joblib.dump(scaler, os.path.join(script_dir, "emg_scaler.pkl"))
+# --- CONFUSION MATRIX ---
+cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=model.classes_)
+
+fig, ax = plt.subplots(figsize=(6,6))
+disp.plot(ax=ax, cmap="Blues", colorbar=False)
+plt.title("Confusion Matrix")
+
+save_path = os.path.join(script_dir, "confusion_matrix.png")
+plt.savefig(save_path, dpi=300, bbox_inches="tight")
+plt.close()
+
+print("Confusion matrix saved at:", save_path)
+
+# --- SAVE MODEL ---
+joblib.dump(model, os.path.join(script_dir, "emg_model_test.pkl"))
+joblib.dump(scaler, os.path.join(script_dir, "emg_scaler_test.pkl"))
 
 print("\nModel + scaler saved.")
