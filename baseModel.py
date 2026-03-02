@@ -28,19 +28,15 @@ y_new = []
 
 def extract_features(window):
     features = []
-
     for ch in range(window.shape[1]):
         signal = window[:, ch]
-
         mean = np.mean(signal)
         std = np.std(signal)
         rms = np.sqrt(np.mean(signal**2))
         mav = np.mean(np.abs(signal))
         wl = np.sum(np.abs(np.diff(signal)))
         zc = np.sum(np.diff(np.sign(signal)) != 0)
-
         features.extend([mean, std, rms, mav, wl, zc])
-
     return features
 
 for i in range(0, len(sensor_data) - WINDOW, WINDOW):
@@ -80,25 +76,30 @@ model.fit(X_train, y_train)
 
 y_pred = model.predict(X_test)
 
-print("\nTraining Accuracy:", accuracy_score(y_test, y_pred))
+print("\nAccuracy:", accuracy_score(y_test, y_pred))
 print(classification_report(y_test, y_pred))
 
 # --- CONFUSION MATRIX ---
 cm = confusion_matrix(y_test, y_pred, labels=model.classes_)
 disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=model.classes_)
 
-fig, ax = plt.subplots(figsize=(6,6))
+fig, ax = plt.subplots(figsize=(10,8))
 disp.plot(ax=ax, cmap="Blues", colorbar=False)
+
+plt.xticks(rotation=45, ha='right')
+plt.yticks(rotation=0)
+
 plt.title("Confusion Matrix")
+plt.tight_layout()
 
 save_path = os.path.join(script_dir, "confusion_matrix.png")
 plt.savefig(save_path, dpi=300, bbox_inches="tight")
 plt.close()
 
-print("Confusion matrix saved at:", save_path)
+print("Confusion matrix saved.")
 
 # --- SAVE MODEL ---
 joblib.dump(model, os.path.join(script_dir, "emg_model_test.pkl"))
 joblib.dump(scaler, os.path.join(script_dir, "emg_scaler_test.pkl"))
 
-print("\nModel + scaler saved.")
+print("Model + scaler saved.")
